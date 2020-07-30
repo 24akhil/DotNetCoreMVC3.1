@@ -1,0 +1,47 @@
+http://192.168.100.26:8080/summary/StudioRGBase.git    Git
+
+http://192.168.100.26:8080/summary/StudioRGCompass.git   compass
+
+
+http://pinkar.kumari@192.168.100.26:8080/r/StudioRGBase.git  Partstown and native
+
+https://outlook.office.com/mail/inbox    Outlook
+
+https://uatseastus.azurewebsites.net/PartsTown#nbb   Partstown Azure UAT
+
+https://studiorgqa.azurewebsites.net/PartsTown#nbb   Partstown Azure QA
+
+http://192.168.100.33/Login.aspx?ReturnUrl=http://192.168.100.33/Pages/DashBoard/HomeDashBoard.aspx   Timesheet
+
+https://diasparkbeta.com:9786/   HRMS
+
+http://cicis.azurewebsites.net/#nbb   Cicis Azure
+
+
+Credentials
+ 1. Compass
+
+    QA: PinkarQAC
+    Password: Diaspark@123
+
+    UAT: pinkarUATC
+    Password: Diaspark@123
+
+ 2. Partstown
+   QA: PinkarPTQA
+   Password: Diaspark@123
+
+ 3. Cicis
+   QA: demo.cicisuser2
+   Password: Diaspark@1
+
+
+   Git Credentials
+   Username: pinkar.kumari
+   Password:diasparkpk
+
+   Database Credentials
+   ID=sa;
+   Password= R3myL3B3@xxu
+   studiorguatsrvcus.cloudapp.net
+

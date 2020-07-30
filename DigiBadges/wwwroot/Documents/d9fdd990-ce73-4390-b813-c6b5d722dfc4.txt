@@ -1,0 +1,56 @@
+testuser11  -----  n%2Q*5N  ------ 31 237 24 35 110 157 141 178 13 208 202 54 162 113 25 225 17 78 55 23
+testuser12  -----  mY%68gK  ------ 168 170 104 63 2 53 54 29 108 145 253 232 236 5 205 242 114 170 145 33
+
+
+<p>Hello <b>test user :</b></p><p><br>Welcome to Compass Studio. 
+Your Compass Studio account has been created with the following 
+credentials: <br><p><br>&emsp;User Name: <b>testuser12</b> 
+<br><br>&emsp;Password: <b>mY%68gK</b><br><br>Please go to 
+<a href="https://studiorgqa.azurewebsites.net/Compass">https://studiorgqa.azurewebsites.net/Compass</a> 
+to access your account.You will be asked to reset your password during your 
+first log-in.<br><br>Thank you,<br>Team Compass Studio
+
+
+<p>Hello <b>test user :</b></p><p><br>Welcome to Compass Studio.
+ Your Compass Studio account has been created with the following
+ credentials: <br><p><br>&emsp;User Name: <b>testuser1</b> <br><br>&emsp;Password: 
+<b>n%2Q*5N</b><br><br>Please go to <a href="https://studiorgqa.azurewebsites.net/Compass">https://studiorgqa.azurewebsites.net/Compass</a>
+ to access your account.You will be asked to reset your password during your first log-in.<br><br>Thank you,<br>Team Compass Studio
+
+First Login (No mail)
+testuser11  -----  Diaspark@111 ------ 156 84 192 183 188 185 224 234 132 124 171 73 118 242 196 36 144 75 238 226
+testuser12  -----  Diaspark@111 ------ 156 84 192 183 188 185 224 234 132 124 171 73 118 242 196 36 144 75 238 226
+
+Password Reset (mail)
+testuser11  -----  4Kp*d2$ ------ 177 118 161 48 197 60 86 48 198 52 207 13 42 90 33 59 89 73 216 83
+testuser12  -----  N$s93rQ ------ 241 41 54 12 95 150 43 1 5 146 61 49 111 42 127 93 233 125 189 126
+
+
+select * from [QA_azmbl].[dbo].[User] where username='testuser11';
+select * from [QA_azmbl].[dbo].[User] where username='testuser12';
+
+
+Password Reset 
+testuser11  -----  Diaspark@111 ------ 156 84 192 183 188 185 224 234 132 124 171 73 118 242 196 36 144 75 238 226
+testuser12  -----  Diaspark@123 ------ 100 54 114 160 77 207 165 56 44 58 20 112 180 20 89 13 7 221 145 42
+
+
+if IsActive=0
+    Username does not exist. Please try again
+
+
+Adding User With same Username
+    1. if all the details like username , firstname , lastname , email is same then Username already exist. is displayed
+    2. else only if username is same User created successfully is displayed.
+
+
+Status:
+   if status=1 -----> login successful
+   else if status=1,2,3 -------> Invalid username/Password
+   else if status=4,5 ------> Account Suspended
+   else if status=6,7,8,9............--------> login Successful
+   
+
+
+
+update [QA_azmbl].[dbo].[User] set Status='3' where UserName='testuser12';

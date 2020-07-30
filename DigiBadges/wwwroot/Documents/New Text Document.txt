@@ -1,0 +1,711 @@
+USE [EDCWorkFlows_DEV]
+GO
+/****** Object:  StoredProcedure [dbo].[procContractExecutionSendEmail]    Script Date: 5/1/2019 9:41:18 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+
+
+
+
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+ALTER PROCEDURE [dbo].[procContractExecutionSendEmail]
+	-- Add the parameters for the stored procedure here
+	@EmailScenarioCode VARCHAR(20),
+	@ContractId INT,
+	@To VARCHAR(MAX),
+	@Cc VARCHAR(MAX),
+	@SiteURL VARCHAR(255),
+	@IsTestMode BIT = 1
+AS
+BEGIN
+	-- SET NOCOUNT ON added to prevent extra result sets from
+	-- interfering with SELECT statements.
+	SET NOCOUNT ON;
+
+    -- Insert statements for procedure here
+	
+	DECLARE @EmailScenarioUID INT
+	DECLARE @Subject VARCHAR(2000)
+	DECLARE @BodyHTML VARCHAR(MAX)
+	DECLARE @CreatedBy INT
+	DECLARE @EmailBody VARCHAR(MAX)
+	DECLARE @DPMEmail VARCHAR(100)
+	DECLARE @DPMSupEmail VARCHAR(100)
+
+	DECLARE @Scenario TABLE (
+		EmailScenarioUID INT,
+		Subject VARCHAR(2000),
+		BodyHTML VARCHAR(MAX),
+		CreatedBy INT
+	)
+	
+
+	
+	INSERT INTO @Scenario(EmailScenarioUID,Subject,BodyHTML,CreatedBy)
+	EXEC procGetEmailTemplate @EmailScenarioCode
+
+	SELECT @EmailScenarioUID = EmailScenarioUID , @Subject = Subject , @BodyHTML = BodyHTML , @CreatedBy = CreatedBy
+	FROM @Scenario
+	
+	EXEC procContractExecutionFillValuesInEmail @BodyHTML, @ContractId , @EmailBodyOutput = @EmailBody OUTPUT
+
+	
+	
+	DECLARE @DistributionListUID INT
+	DECLARE @ScenarioDLMappingUID INT
+	DECLARE @AdditionalEmails VARCHAR(MAX)
+	DECLARE @AdditionalEmailsCC VARCHAR(MAX)
+	DECLARE @ScenarioDLMapping TABLE (
+		ScenarioDLMappingUID INT,
+		EmailScenarioUID INT,
+		DistributionListUID INT,
+		IsInCC BIT
+	)
+	 
+
+	INSERT INTO  @ScenarioDLMapping (ScenarioDLMappingUID,EmailScenarioUID,DistributionListUID,IsInCC)
+	SELECT ScenarioDLMappingUID,EmailScenarioUID,DistributionListUID,IsInCC FROM Emails2017.Email.tblScenarioDLMapping WHERE EmailScenarioUID = @EmailScenarioUID
+    ---iterate each DL
+	DECLARE @KeyID INT
+	DECLARE @TotalCount INT
+	DECLARE @DistributionListCode VARCHAR(20)
+	DECLARE @DLIsInCC BIT
+	SELECT @KeyId = MIN(ScenarioDLMappingUID), @TotalCount = COUNT(ScenarioDLMappingUID) FROM @ScenarioDLMapping
+	
+	WHILE @TotalCount <> 0
+	BEGIN
+		SELECT @DistributionListUID = DistributionListUID,@DLIsInCC = IsInCC FROM @ScenarioDLMapping WHERE ScenarioDLMappingUID = @KeyId
+		SELECT @DistributionListCode = DistributionListCode FROM Emails2017.Email.tblDistributionList WHERE DistributionListUID = @DistributionListUID
+		 
+				IF @DLIsInCC IS NULL OR @DLIsInCC <> 1
+					BEGIN
+						SELECT @AdditionalEmails = 
+							CASE WHEN @AdditionalEmails = '' OR @AdditionalEmails IS NULL
+								THEN email
+								ELSE @AdditionalEmails + COALESCE(';' + email, '')
+							END
+						FROM  vwAllUserDetails WHERE loginid IN ( SELECT loginid FROM Emails2017.Email.tblSQLDistributionList WHERE DistributionListUID = @DistributionListUID )
+					END
+				ELSE
+					BEGIN
+						SELECT @AdditionalEmailsCC = 
+							CASE WHEN @AdditionalEmailsCC = '' OR @AdditionalEmailsCC IS NULL
+								THEN email
+								ELSE @AdditionalEmailsCC + COALESCE(';' + email, '')
+							END
+						FROM  vwAllUserDetails WHERE loginid IN ( SELECT loginid FROM Emails2017.Email.tblSQLDistributionList WHERE DistributionListUID = @DistributionListUID )
+					END
+		
+		SELECT @KeyId = MIN(ScenarioDLMappingUID) FROM @ScenarioDLMapping WHERE ScenarioDLMappingUID > @KeyId
+		SET @TotalCount = @TotalCount - 1
+	END
+
+	DECLARE @CMEmail VARCHAR(200),@CAEmail VARCHAR(200),@OAEmail VARCHAR(200),@DVPEmail VARCHAR(200),@BAEmails VARCHAR(MAX),@BVPEmails VARCHAR(MAX),@PSSEmails VARCHAR(MAX),
+	@GSVPEmails VARCHAR(MAX),@LGLRwrEmail VARCHAR(200),@ControllerEmail VARCHAR(MAX),@ContractsSVPEmail VARCHAR(MAX),@EVPEmail VARCHAR(MAX), @GAEmails VARCHAR(MAX)
+	DECLARE @IsGAApprovalRequired CHAR(1)
+
+	SELECT TOP 1 @IsGAApprovalRequired = IsApprovalRequired FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'GA'
+
+	SELECT @CMEmail = email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'CM'
+	SELECT @CAEmail = email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'CA'
+	SELECT @OAEmail = email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'OA'
+	SELECT @PSSEmails = COALESCE(@PSSEmails + ';', '') + ISNULL(Email, '') FROM (SELECT DISTINCT email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'CMPSS') TBL
+	SELECT @DVPEmail = email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'CMVP'
+	IF @EmailScenarioCode <> 'CEBAFR' AND  @EmailScenarioCode <> 'CEBAFA'
+	BEGIN
+		SELECT @BAEmails = COALESCE(@BAEmails + ';', '') + ISNULL(Email, '') FROM (SELECT DISTINCT email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'BA') TBL
+	END
+	ELSE
+	BEGIN
+		IF @EmailScenarioCode = 'CEBAFR'  
+		BEGIN
+			SELECT @BAEmails = COALESCE(@BAEmails + ';', '') + ISNULL(Email, '') FROM (SELECT DISTINCT email FROM [dbo].vwAllUserDetails u INNER JOIN [dbo].[vwFundingApprover] FA ON u.loginid = FA.loginid INNER JOIN udfGetSavedSelectedFunding(@ContractId) SF ON FA.CategoryId = SF.Fundingcategoryid WHERE SF.Fundingcategoryid = (SELECT TOP 1 FundingCategoryId FROM tblFundingApprovalStatus WHERE ContractNumber = @ContractId AND IsApproved = 0 ORDER BY ModifiedOn DESC)) TBL
+		END
+		ELSE IF @EmailScenarioCode = 'CEBAFA'  
+		BEGIN
+			SELECT @BAEmails = COALESCE(@BAEmails + ';', '') + ISNULL(Email, '') FROM (SELECT DISTINCT email FROM [dbo].vwAllUserDetails u INNER JOIN [dbo].[vwFundingApprover] FA ON u.loginid = FA.loginid INNER JOIN udfGetSavedSelectedFunding(@ContractId) SF ON FA.CategoryId = SF.Fundingcategoryid WHERE SF.Fundingcategoryid = (SELECT TOP 1 FundingCategoryId FROM tblFundingApprovalStatus WHERE ContractNumber = @ContractId AND IsApproved = 0 ORDER BY CreatedOn DESC)) TBL
+		END
+	END
+	SELECT @GSVPEmails = COALESCE(@GSVPEmails + ';', '') + ISNULL(Email, '') FROM (SELECT DISTINCT email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'GSVP') TBL
+	SELECT @BVPEmails = COALESCE(@BVPEmails + ';', '') + ISNULL(Email, '') FROM (SELECT DISTINCT email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'BVP') TBL
+	SELECT @LGLRwrEmail = email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'LGLR'
+	SELECT @ControllerEmail = COALESCE(@ControllerEmail + ';', '') + ISNULL(Email, '') FROM (SELECT DISTINCT email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'CNTRL') TBL
+	SELECT @ContractsSVPEmail = COALESCE(@ContractsSVPEmail + ';', '') + ISNULL(Email, '') FROM (SELECT DISTINCT email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'CSVP') TBL
+	SELECT @EVPEmail = email  FROM [CAMS2004].[dbo].[vwContractTeam] WHERE contractid = @ContractId AND role = 7
+	IF @IsGAApprovalRequired = 'Y' 
+	BEGIN
+		SELECT @GAEmails = COALESCE(@GAEmails + ';', '') + ISNULL(Email, '') FROM (SELECT DISTINCT email FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'GA') TBL
+	END
+	ELSE
+	BEGIN
+		SET @GAEmails = ''
+	END
+
+	IF @IsTestMode <> 1
+	BEGIN
+		
+		IF @EmailScenarioCode = 'CEME' OR @EmailScenarioCode = 'CER'
+		BEGIN	
+			--roleid = 3 is DPM
+			SELECT @DPMEmail = Email FROM udfGetProjectDPMOrDPMSUP(3, (SELECT TOP(1) ProjectNum FROM [CAMS2004].[dbo].[tblContract]  WHERE ContractId = @ContractId))
+					
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @DPMEmail IS NULL THEN '' ELSE ';' + @DPMEmail END
+					
+			--roleid = 4 is DPMSup
+			SELECT @DPMSupEmail = Email FROM udfGetProjectDPMOrDPMSUP(4, (SELECT TOP(1) ProjectNum FROM [CAMS2004].[dbo].[tblContract]  WHERE ContractId = @ContractId))
+		
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @DPMSupEmail IS NULL THEN '' ELSE ';' + @DPMSupEmail END
+			--EVP in cc
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @EVPEmail IS NULL THEN '' ELSE ';' + @EVPEmail END
+			
+			--GA in cc
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @GAEmails IS NULL THEN '' ELSE ';' + @GAEmails END
+
+		END
+
+		--GA in to 
+		IF @EmailScenarioCode = 'CEABA' 
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @GAEmails IS NULL THEN '' ELSE ';' + @GAEmails END
+		END
+		--GA in cc
+		ELSE IF @EmailScenarioCode = 'CEAGA' OR  @EmailScenarioCode = 'CER'
+		BEGIN
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @GAEmails IS NULL THEN '' ELSE ';' + @GAEmails END
+		END
+		--cm in to
+		IF @EmailScenarioCode = 'CESBCM' OR @EmailScenarioCode =  'CEACA' 
+		    OR  @EmailScenarioCode = 'CEME' OR  @EmailScenarioCode = 'CER' 
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @CMEmail IS NULL THEN '' ELSE ';' + @CMEmail END
+		END
+		--cm in cc
+		ELSE IF @EmailScenarioCode = 'CEABA' OR @EmailScenarioCode = 'CEPAI' OR  @EmailScenarioCode = 'CESABA' OR  @EmailScenarioCode = 'CESAPDVP' OR  @EmailScenarioCode = 'CESAADVP' OR  @EmailScenarioCode = 'CESAAL' OR  @EmailScenarioCode = 'CESAAG'
+		        OR  @EmailScenarioCode = 'CESAABVP' OR  @EmailScenarioCode = 'CESAAC' OR  @EmailScenarioCode = 'CESAASVPC' OR  @EmailScenarioCode = 'CEAGFF' OR  @EmailScenarioCode = 'CEAGMF' OR @EmailScenarioCode = 'CEBAFR' OR  @EmailScenarioCode = 'CEBAFA' OR @EmailScenarioCode = 'CEAGA' OR @EmailScenarioCode = 'CEAOA'
+		BEGIN
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @CMEmail IS NULL THEN '' ELSE ';' + @CMEmail END
+		END
+
+		--ca in to
+		IF @EmailScenarioCode = 'CEAOA' OR  @EmailScenarioCode = 'CESAASVPC' OR  @EmailScenarioCode = 'CEAGFF' OR  @EmailScenarioCode = 'CEAGMF'
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @CAEmail IS NULL THEN '' ELSE ';' + @CAEmail END
+		END
+		--ca in cc
+		ELSE IF @EmailScenarioCode = 'CESBCM'  OR  @EmailScenarioCode = 'CESAADVP' OR  @EmailScenarioCode = 'CEME' OR @EmailScenarioCode = 'CER'  OR @EmailScenarioCode = 'CEBAFR' OR  @EmailScenarioCode = 'CEBAFA' OR @EmailScenarioCode = 'CEAGA' OR @EmailScenarioCode =  'CEACA'
+		BEGIN
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @CAEmail IS NULL THEN '' ELSE ';' + @CAEmail END
+		END
+
+		--oa in to
+		IF @EmailScenarioCode = 'CEAGA' OR (@EmailScenarioCode = 'CEABA' AND @IsGAApprovalRequired = 'N' )
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @OAEmail IS NULL THEN '' ELSE ';' + @OAEmail END
+		END
+		--oa in cc
+		ELSE IF @EmailScenarioCode = 'CEAOA'
+		BEGIN
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @OAEmail IS NULL THEN '' ELSE ';' + @OAEmail END
+		END
+
+		--pss in to
+		IF @EmailScenarioCode = 'CEME' OR  @EmailScenarioCode = 'CER'
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @PSSEmails IS NULL THEN '' ELSE ';' + @PSSEmails END
+		END
+		--pss in cc
+		ELSE IF   @EmailScenarioCode = 'CESBCM' OR  @EmailScenarioCode = 'CESABA' OR @EmailScenarioCode = 'CEACA'
+		        OR  @EmailScenarioCode = 'CEABA' OR  @EmailScenarioCode = 'CESAPDVP' OR @EmailScenarioCode = 'CESAADVP' OR  @EmailScenarioCode = 'CESAAL' OR  @EmailScenarioCode = 'CESAAG' OR  @EmailScenarioCode = 'CESAABVP' 
+				OR  @EmailScenarioCode = 'CESAAC' OR  @EmailScenarioCode = 'CESAASVPC' OR  @EmailScenarioCode = 'CEAGFF' OR  @EmailScenarioCode = 'CEAGMF' OR @EmailScenarioCode = 'CEAGA' OR @EmailScenarioCode = 'CEAOA'
+		BEGIN
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @PSSEmails IS NULL THEN '' ELSE ';' + @PSSEmails END
+		END
+
+		--ba in to
+		IF @EmailScenarioCode = 'CESABA' OR @EmailScenarioCode = 'CEBAFR' OR  @EmailScenarioCode = 'CEBAFA'
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @BAEmails IS NULL THEN '' ELSE ';' + @BAEmails END
+		END
+		--ba in cc
+		ELSE IF @EmailScenarioCode = 'CEME' OR  @EmailScenarioCode = 'CER'
+		BEGIN
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @BAEmails IS NULL THEN '' ELSE ';' + @BAEmails END
+		END
+
+		--Department VP (or above) in to
+		IF @EmailScenarioCode = 'CESAPDVP'
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @DVPEmail IS NULL THEN '' ELSE ';' + @DVPEmail END
+		END
+		--Department VP (or above) in cc
+		ELSE IF @EmailScenarioCode = 'CEME' OR  @EmailScenarioCode = 'CER'
+		BEGIN
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @DVPEmail IS NULL THEN '' ELSE ';' + @DVPEmail END
+		END
+
+		DECLARE @IsLglApprovalRequired CHAR(1) 
+		SELECT TOP 1 @IsLglApprovalRequired = IsApprovalRequired FROM udfGetAllSignatoryUsers(@ContractId) WHERE RoleCode = 'LGLR'
+		DECLARE @IsGntApprovalRequired CHAR(1) 
+		SELECT TOP 1 @IsGntApprovalRequired = IsApprovalRequired FROM udfGetAllSignatoryUsers(@ContractId) WHERE RoleCode = 'GSVP'
+
+		IF @EmailScenarioCode = 'CESAPDVP' AND @IsGntApprovalRequired = 'Y'
+		BEGIN
+			DECLARE @Scenario3 TABLE (
+			EmailScenarioUID INT,
+			Subject VARCHAR(2000),
+			BodyHTML VARCHAR(MAX),
+			CreatedBy INT
+			)
+			DECLARE @EmailScenarioUID3 INT
+			DECLARE @Subject3 VARCHAR(2000)
+			DECLARE @BodyHTML3 VARCHAR(MAX)
+			DECLARE @CreatedBy3 INT
+			DECLARE @EmailBody3 VARCHAR(MAX)
+			DECLARE @To3 VARCHAR(200)
+		
+			INSERT INTO @Scenario3(EmailScenarioUID,Subject,BodyHTML,CreatedBy)
+			EXEC procGetEmailTemplate 'CESAI'
+
+			SELECT @EmailScenarioUID3 = EmailScenarioUID , @Subject3 = Subject , @BodyHTML3 = BodyHTML , @CreatedBy3 = CreatedBy
+			FROM @Scenario3
+	
+			EXEC procContractExecutionFillValuesInEmail @BodyHTML3, @ContractId , @EmailBodyOutput = @EmailBody3 OUTPUT
+
+			SET @To3  = @GSVPEmails
+			IF @IsTestMode <> 1
+			BEGIN
+				EXEC Emails2017.Email.spInsertIntoQueue @EmailScenarioUID3 , @To3 , '' , @Subject3 , @EmailBody3 , NULL , 'Event Driven'
+			END
+			ELSE
+			BEGIN
+				EXEC Emails2017.Email.spInsertIntoQueue @EmailScenarioUID3 , @To , '' , @Subject3 , @EmailBody3 , NULL , 'Event Driven'
+			END
+		END
+		
+		--Legal Reviewer in to
+		IF @EmailScenarioCode = 'CESAADVP' AND @IsLglApprovalRequired = 'Y'
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @LGLRwrEmail IS NULL THEN '' ELSE ';' + @LGLRwrEmail END
+		END
+		ELSE IF @EmailScenarioCode = 'CESAADVP' AND @IsLglApprovalRequired = 'N'
+		BEGIN
+			--IF @IsGntApprovalRequired = 'Y'
+			--BEGIN
+				--SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @GSVPEmails IS NULL THEN '' ELSE ';' + @GSVPEmails END
+			--END
+			--ELSE
+			--IF @IsGntApprovalRequired = 'N'
+			--BEGIN
+				SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @BVPEmails IS NULL THEN '' ELSE ';' + @BVPEmails END
+			--END
+		END
+		--Legal Reviewer in cc
+		ELSE IF @EmailScenarioCode = 'CEME' OR  @EmailScenarioCode = 'CER' 
+		BEGIN
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @LGLRwrEmail IS NULL THEN '' ELSE ';' + @LGLRwrEmail END
+		END
+
+		
+		--Grants VP (or above) in to
+		IF @EmailScenarioCode = 'CESAAL' OR (@EmailScenarioCode = 'CESAABVP' AND @IsGntApprovalRequired = 'Y')
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @GSVPEmails IS NULL THEN '' ELSE ';' + @GSVPEmails END
+		END
+
+		--Budget VP (or above) in to
+		IF @EmailScenarioCode = 'CESAAL'
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @BVPEmails IS NULL THEN '' ELSE ';' + @BVPEmails END
+		END 
+		--Budget VP (or above) in cc
+		IF @EmailScenarioCode = 'CEME' OR  @EmailScenarioCode = 'CER'
+		BEGIN
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @BVPEmails IS NULL THEN '' ELSE ';' + @BVPEmails END
+		END
+
+		--Controller in to
+		IF (@EmailScenarioCode = 'CESAABVP' AND @IsGntApprovalRequired = 'N') OR @EmailScenarioCode = 'CESAAG'
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @ControllerEmail IS NULL THEN '' ELSE ';' + @ControllerEmail END
+		END
+		--Controller in cc
+		ELSE IF @EmailScenarioCode = 'CEME' OR  @EmailScenarioCode = 'CER'
+		BEGIN
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @ControllerEmail IS NULL THEN '' ELSE ';' + @ControllerEmail END
+		END
+
+		--Contracts SVP in to
+		IF @EmailScenarioCode = 'CESAAC'
+		BEGIN
+			SET @To = CASE WHEN @To IS NULL OR @To = '' THEN '' ELSE @To END + CASE WHEN @ContractsSVPEmail IS NULL THEN '' ELSE ';' + @ContractsSVPEmail END
+		END
+		
+					
+		SET @To = CASE WHEN @To IS NULL OR @To = '' THEN @AdditionalEmails ELSE @To +  ';' + CASE WHEN @AdditionalEmails IS NULL OR @AdditionalEmails = '' THEN '' ELSE @AdditionalEmails END END
+		SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN @AdditionalEmailsCC ELSE @Cc +  ';' + CASE WHEN @AdditionalEmailsCC IS NULL OR @AdditionalEmailsCC = '' THEN '' ELSE @AdditionalEmailsCC END END			
+	END
+
+	IF  @EmailScenarioCode = 'CEAGFF' 
+	BEGIN
+		SET @EmailBody = REPLACE(@EmailBody, '^documenttypeheader^', 'Contract Approval Form')
+		SET @EmailBody = REPLACE(@EmailBody, '^documenttype^', 'contract approval form')
+	END
+	ELSE IF @EmailScenarioCode = 'CEAGMF'
+	BEGIN
+		SET @EmailBody = REPLACE(@EmailBody, '^documenttypeheader^', 'Contract Execution Memo')
+		SET @EmailBody = REPLACE(@EmailBody, '^documenttype^', 'contract execution memo')
+	END
+	
+	DECLARE @Comment VARCHAR(MAX)
+	DECLARE @LastActionTakenBy VARCHAR(1000)
+	DECLARE @LastActionTakenByDept VARCHAR(100)
+	DECLARE @LastActionTaken VARCHAR(100)
+	DECLARE @LastActionTakenDate DATETIME
+	DECLARE @LastStatus VARCHAR(50)
+	DECLARE @CurrentStatus VARCHAR(50)
+	DECLARE @TaskAssignedTo VARCHAR(1000)
+	DECLARE @TaskAssignmentDate VARCHAR(10)
+	DECLARE @UserInActive CHAR(1)
+	DECLARE @FocusAreaId INT
+
+	
+	SELECT TOP 1 @LastActionTaken = (SELECT TOP 1 ActionName FROM tblWFActionMst WHERE ActionUID = WFActionUID ) , @LastActionTakenBy = (SELECT TOP 1 UserFullName FROM vwAllUserDetails WHERE loginid =  CreatedBy),
+	@LastActionTakenByDept = (SELECT TOP 1 DeptDescription FROM vwAllUserDetails WHERE loginid =  CreatedBy),@LastActionTakenDate = CreatedOn,@LastStatus = (SELECT TOP 1 WFStatusCodeDesc FROM tblWFStatusMst WHERE WFStatusUID = WFAT.WFStatusUID )
+	FROM tblWFActionTransactions WFAT WHERE WFInstanceId IN (SELECT WFInstanceId FROM tblContractWorkflows WHERE ContractId = @ContractId AND WFUID =  (SELECT WFUID FROM tblWFMst WHERE WFCode LIKE 'WF0041') AND RecordExpired = (CASE WHEN @EmailScenarioCode = 'CER' THEN 'Y' ELSE 'N' END)) ORDER BY CreatedOn DESC
+	
+	SELECT @CurrentStatus = (SELECT WFStatusCodeDesc FROM tblWFStatusMst WHERE WFStatusCode =  (SELECT TOP 1 RequestStatusCode FROM tblContractExecutionStatus WHERE ContractId = @ContractId ORDER BY ModifyOn DESC ))
+    
+	SET @EmailBody = REPLACE(@EmailBody, '^Status^', ISNULL(@CurrentStatus,''))
+	SET @EmailBody = REPLACE(@EmailBody, '^LastActionTakenBy^', ISNULL(@LastActionTakenBy,'') + CASE WHEN @LastActionTakenByDept IS NULL THEN '' ELSE ' ('+@LastActionTakenByDept + ')' END )
+	SET @EmailBody = REPLACE(@EmailBody, '^LastActionTakenDate^', CASE WHEN @LastActionTakenDate IS NULL OR CONVERT(DATE, @LastActionTakenDate) = '1900-01-01' THEN '' 
+	ELSE CONVERT(VARCHAR(10), @LastActionTakenDate, 101) + ' ' + REPLACE(REPLACE(RIGHT(CONVERT(VARCHAR, @LastActionTakenDate, 100), 7),'AM',' AM'),'PM',' PM') END)	
+
+	IF @LastActionTaken = 'Send Back to CM'
+	BEGIN
+		SELECT @FocusAreaId = FocusAreaId FROM tblEDCWFFocusAreaMst WHERE FocusArea LIKE @LastActionTaken AND Category = 'Contract Execution'
+	END
+	ELSE
+	BEGIN
+		SELECT @FocusAreaId = FocusAreaId FROM tblEDCWFFocusAreaMst WHERE FocusArea LIKE '%' + CASE WHEN @LastActionTaken = 'Reject' THEN 'Rejected' ELSE  @LastStatus END +'%' AND Category = 'Contract Execution'
+	END
+	
+	SELECT TOP(1) @Comment = [dbo].[udf_EmailLineBreak]([dbo].[udf_HtmlEncode](CommentDescription)) FROM [dbo].[tblComment] WHERE ProjectId = @ContractId AND FocusAreaId = @FocusAreaId ORDER BY CreatedOn DESC
+
+	IF  @EmailScenarioCode <> 'CEBAFR' AND @EmailScenarioCode <> 'CEBAFA'
+	BEGIN
+		SET @EmailBody = REPLACE(@EmailBody, '^Comments^', ISNULL(@Comment,''))
+	END
+	ELSE
+	BEGIN
+		SET @Comment = ''
+		SET @EmailBody = REPLACE(@EmailBody, '^Comments^', '')
+	END
+
+	SELECT TOP(1) @TaskAssignedTo = TaskAssignTo , @TaskAssignmentDate = TaskAssignmentDate ,@UserInActive = UserStatusInActive FROM [dbo].[udfGetContractExecNextActionDetail](@ContractId) 
+	SET @EmailBody = REPLACE(@EmailBody, '^AssignedTo^', ISNULL(@TaskAssignedTo,''))
+	SET @EmailBody = REPLACE(@EmailBody, '^AssignmentDate^', ISNULL(@TaskAssignmentDate,''))
+	SET @EmailBody = REPLACE(@EmailBody, '^UserStatus^', ISNULL('<span style="background-color:yellow;">'+CASE WHEN @UserInActive = 'Y' THEN 'Inactive' ELSE 'Active' END+'</span>',''))
+	
+	print @UserInActive
+
+	IF @UserInActive = 'N' OR @UserInActive IS NULL 
+	BEGIN
+		SET @EmailBody = REPLACE(@EmailBody, '^ShowHideUserStatusStart^','<!--')
+		SET @EmailBody = REPLACE(@EmailBody, '^ShowHideUserStatusEnd^','-->')
+	END
+	ELSE
+	BEGIN
+		SET @EmailBody = REPLACE(@EmailBody, '^ShowHideUserStatusStart^','')
+		SET @EmailBody = REPLACE(@EmailBody, '^ShowHideUserStatusEnd^','')
+		--send email to cm and ca for user is inactive
+		DECLARE @Scenario2 TABLE (
+		EmailScenarioUID INT,
+		Subject VARCHAR(2000),
+		BodyHTML VARCHAR(MAX),
+		CreatedBy INT
+		)
+		DECLARE @EmailScenarioUID2 INT
+		DECLARE @Subject2 VARCHAR(2000)
+		DECLARE @BodyHTML2 VARCHAR(MAX)
+		DECLARE @CreatedBy2 INT
+		DECLARE @EmailBody2 VARCHAR(MAX)
+		DECLARE @To2 VARCHAR(200)
+		
+		INSERT INTO @Scenario2(EmailScenarioUID,Subject,BodyHTML,CreatedBy)
+		EXEC procGetEmailTemplate 'CETIU'
+
+		SELECT @EmailScenarioUID2 = EmailScenarioUID , @Subject2 = Subject , @BodyHTML2 = BodyHTML , @CreatedBy2 = CreatedBy
+		FROM @Scenario2
+
+		--JIRA EDCEXN-746, Check for inactive user.
+		SET @BodyHTML2 = REPLACE(@BodyHTML2, '^ShowHideUserStatusStart^','')
+		SET @BodyHTML2 = REPLACE(@BodyHTML2, '^ShowHideUserStatusEnd^','')
+		SET @BodyHTML2 = REPLACE(@BodyHTML2, '^AssignedTo^', ISNULL(@TaskAssignedTo,''))
+		SET @BodyHTML2 = REPLACE(@BodyHTML2, '^AssignmentDate^', ISNULL(@TaskAssignmentDate,''))
+		SET @BodyHTML2 = REPLACE(@BodyHTML2, '^UserStatus^', ISNULL('<span style="background-color:yellow;">'+CASE WHEN @UserInActive = 'Y' THEN 'Inactive' ELSE 'Active' END+'</span>',''))
+		
+		SET @BodyHTML2 = REPLACE(@BodyHTML2, '^LastActionTakenBy^', ISNULL(@LastActionTakenBy,'') + CASE WHEN @LastActionTakenByDept IS NULL THEN '' ELSE ' ('+@LastActionTakenByDept + ')' END )
+		SET @BodyHTML2 = REPLACE(@BodyHTML2, '^LastActionTakenDate^', CASE WHEN @LastActionTakenDate IS NULL OR CONVERT(DATE, @LastActionTakenDate) = '1900-01-01' THEN '' 
+		ELSE CONVERT(VARCHAR(10), @LastActionTakenDate, 101) + ' ' + REPLACE(REPLACE(RIGHT(CONVERT(VARCHAR, @LastActionTakenDate, 100), 7),'AM',' AM'),'PM',' PM') END)	
+		
+		--No Need of Comment
+		SET @BodyHTML2 = REPLACE(@BodyHTML2, '^ShowHideCommentsStart^','')
+		SET @BodyHTML2 = REPLACE(@BodyHTML2, '^ShowHideCommentsEnd^','')
+		--JIRA EDCEXN-746, Check for inactive user.
+	
+		EXEC procContractExecutionFillValuesInEmail @BodyHTML2, @ContractId , @EmailBodyOutput = @EmailBody2 OUTPUT
+
+		SET @To2  = @CMEmail + ';' +@CAEmail
+		IF @IsTestMode <> 1
+		BEGIN
+			EXEC Emails2017.Email.spInsertIntoQueue @EmailScenarioUID2 , @To2 , '' , @Subject2 , @EmailBody2 , NULL , 'Event Driven'
+		END
+		ELSE
+		BEGIN
+			EXEC Emails2017.Email.spInsertIntoQueue @EmailScenarioUID2 , @To , '' , @Subject2 , @EmailBody2 , NULL , 'Event Driven'
+		END
+	END
+
+	IF @EmailScenarioCode = 'CESBCM' 
+	BEGIN
+		DECLARE @PrevStatusUID INT
+		DECLARE @PrevStatus VARCHAR(500)
+		DECLARE @PrevActionTakenBy VARCHAR(500)
+		DECLARE @PrevActionTakenId INT
+		DECLARE @OAUserId INT
+		DECLARE @CAUserId INT
+		
+		SELECT TOP 1 @PrevStatusUID = WFStatusUID, @PrevActionTakenId = UserLoginId FROM tblWFActionTransactions WHERE WFInstanceId = (SELECT WFInstanceId FROM tblContractWorkflows WHERE ContractId = @ContractId AND WFUID =  (SELECT WFUID FROM tblWFMst WHERE WFCode LIKE 'WF0041') AND RecordExpired = 'N') ORDER BY CreatedOn DESC
+		SELECT @PrevStatus = WFStatusCodeDesc FROM tblWFStatusMst WHERE WFStatusUID  = @PrevStatusUID
+
+		SELECT @OAUserId = UserLoginId FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'OA'
+		SELECT @CAUserId = UserLoginId FROM [dbo].[udfGetContractExecUsersDetail_ForTaskRequest](@ContractId) WHERE RoleCode = 'CA'
+		
+		IF @PrevStatus LIKE '%Pending with Opportunity Analyst%'
+		BEGIN
+			SET @Subject = REPLACE(@Subject, '^By^',' by Opportunity Analyst')
+			SET @Cc = CASE WHEN @Cc IS NULL OR @Cc = '' THEN '' ELSE @Cc END + CASE WHEN @OAEmail IS NULL THEN '' ELSE ';' + @OAEmail END
+		END
+		IF @PrevStatus LIKE '%Pending with Contract Analyst%'
+		BEGIN
+			SET @Subject = REPLACE(@Subject, '^By^',' by Contract Analyst')
+		END
+		ELSE IF @PrevStatus LIKE '%Pending with Budget Analyst%'
+		BEGIN
+			SET @Subject = REPLACE(@Subject, '^By^',' by Budget Analyst')
+		END
+		ELSE IF @PrevStatus LIKE '%Pending with Grants Analyst%'
+		BEGIN
+			SET @Subject = REPLACE(@Subject, '^By^',' by Grants Analyst')
+		END
+		ELSE
+		BEGIN
+			SET @Subject = REPLACE(@Subject, '^By^',' during Signatory Approvals')
+		END
+	END
+
+	IF @EmailScenarioCode = 'CESAADVP' OR @EmailScenarioCode = 'CESAAL' OR @EmailScenarioCode = 'CESAAG' OR @EmailScenarioCode = 'CESAABVP' OR @EmailScenarioCode = 'CESAAC' OR @EmailScenarioCode = 'CESAASVPC'
+	BEGIN
+		DECLARE @ApprovedBy VARCHAR(500), @PendingWithUser VARCHAR(1000) , @IsApprovalRequired CHAR(1) , @ApprovedByRole VARCHAR(500), @PendingWithRole VARCHAR(1000) 
+		IF @EmailScenarioCode = 'CESAADVP'
+		BEGIN
+			SELECT TOP 1 @ApprovedBy = SignedByName + ' ('+ Department + ')' FROM udfGetAllSignatoryUsers(@ContractId) WHERE RoleCode = 'CMVP' AND IsSigned = 'Y'
+			SET @ApprovedByRole = 'Department VP (or above)'
+			SELECT TOP 1 @IsApprovalRequired = IsApprovalRequired FROM udfGetAllSignatoryUsers(@ContractId) WHERE RoleCode = 'LGLR'
+			IF @IsApprovalRequired = 'Y'
+			BEGIN
+				SET @PendingWithUser = ' & Pending with Legal Department for review and approval'
+				SET @PendingWithRole = ' & Pending with Legal Department'
+				SET @Subject = REPLACE(@Subject, '^PendingWithRole^',@PendingWithRole)
+			END
+			ELSE
+			BEGIN
+				SET @PendingWithUser = ' & Pending with Budget VP (or above) for review and approval'
+				SET @PendingWithRole = ' & Pending with Budget VP (or above)'
+				SET @Subject = REPLACE(@Subject, '^PendingWithRole^',@PendingWithRole)
+			END
+		END
+		IF @EmailScenarioCode = 'CESAAL'
+		BEGIN
+			SELECT TOP 1 @ApprovedBy = SignedByName + ' ('+ Department + ')' FROM udfGetAllSignatoryUsers(@ContractId) WHERE RoleCode = 'LGLR' AND IsSigned = 'Y'
+			SET @ApprovedByRole = 'Legal Department'
+			SET @PendingWithUser = ''
+			--SELECT TOP 1 @IsApprovalRequired = IsApprovalRequired FROM udfGetAllSignatoryUsers(@ContractId) WHERE RoleCode = 'GSVP'
+			--IF @IsApprovalRequired = 'Y'
+			--BEGIN
+			--	SET @PendingWithUser = ' & Pending with Grants VP (or above) for review and approval'
+			--	SET @PendingWithRole = ' & Pending with Grants VP (or above)'
+			--	SET @Subject = REPLACE(@Subject, '^PendingWithRole^',@PendingWithRole)
+			--END
+			--ELSE
+			--BEGIN
+				SET @PendingWithUser = ' & Pending with Budget VP (or above) for review and approval'
+				SET @PendingWithRole = ' & Pending with Budget VP (or above)'
+				SET @Subject = REPLACE(@Subject, '^PendingWithRole^',@PendingWithRole)
+			--END
+		END
+		IF @EmailScenarioCode = 'CESAAG'
+		BEGIN
+			SELECT TOP 1 @ApprovedBy = SignedByName + ' ('+ Department + ')' FROM udfGetAllSignatoryUsers(@ContractId) WHERE RoleCode = 'GSVP' AND IsSigned = 'Y' AND SignedBy IS NOT NULL
+			SET @ApprovedByRole = 'Controller'
+			SET @PendingWithUser = ' & Pending with Controller for review and approval'
+			SET @PendingWithRole = ' & Pending with Controller'
+		END
+		IF @EmailScenarioCode = 'CESAABVP'
+		BEGIN
+			SELECT TOP 1 @ApprovedBy = SignedByName + ' ('+ Department + ')' FROM udfGetAllSignatoryUsers(@ContractId) WHERE RoleCode = 'BVP' AND IsSigned = 'Y' AND SignedBy IS NOT NULL
+			SET @ApprovedByRole = 'Budget VP (or above)'
+			SELECT TOP 1 @IsApprovalRequired = IsApprovalRequired FROM udfGetAllSignatoryUsers(@ContractId) WHERE RoleCode = 'GSVP'
+			IF @IsApprovalRequired = 'Y'
+			BEGIN
+				SET @PendingWithUser = ' & Pending with Grants VP (or above) for review and approval'
+				SET @PendingWithRole = ' & Pending with Grants VP (or above)'
+				SET @Subject = REPLACE(@Subject, '^PendingWithRole^',@PendingWithRole)
+			END
+			ELSE
+			BEGIN
+				SET @PendingWithUser = ' & Pending with Controller for review and approval'
+				SET @PendingWithRole = ' & Pending with Controller'
+				SET @Subject = REPLACE(@Subject, '^PendingWithRole^',@PendingWithRole)
+			END
+		END
+		IF @EmailScenarioCode = 'CESAAC'
+		BEGIN
+			SELECT TOP 1 @ApprovedBy = SignedByName + ' ('+ Department + ')' FROM udfGetAllSignatoryUsers(@ContractId) WHERE RoleCode = 'CNTRL' AND IsSigned = 'Y' AND SignedBy IS NOT NULL
+			SET @ApprovedByRole = 'Controller'
+			SET @PendingWithUser = ' & Pending with Contracts SVP for review and approval'
+			SET @PendingWithRole = ' & Pending with Contracts SVP'
+		END
+		IF @EmailScenarioCode = 'CESAASVPC'
+		BEGIN
+			SELECT TOP 1 @ApprovedBy = SignedByName + ' ('+ Department + ')' FROM udfGetAllSignatoryUsers(@ContractId) WHERE RoleCode = 'CSVP' AND IsSigned = 'Y' AND SignedBy IS NOT NULL
+			SET @ApprovedByRole = 'Contracts SVP'
+			SET @PendingWithUser = ' & pending with Contract Analyst to mark executed this contract execution request'
+			SET @PendingWithRole = ''
+		END
+		SET @EmailBody = REPLACE(@EmailBody, '^UserName^',@ApprovedBy)
+		SET @EmailBody = REPLACE(@EmailBody, '^PendingWithUserName^',@PendingWithUser)
+		SET @EmailBody = REPLACE(@EmailBody, '^Role^',@ApprovedByRole)
+		SET @EmailBody = REPLACE(@EmailBody, '^PendingWithRole^',@PendingWithRole)
+	END
+
+	IF @EmailScenarioCode =  'CEACA' OR @EmailScenarioCode = 'CEAOA'  OR @EmailScenarioCode = 'CEABA'
+	BEGIN
+		IF @EmailScenarioCode = 'CEAOA'
+		BEGIN
+			SET @EmailBody = REPLACE(@EmailBody, '^Role^','Opportunity Analyst & Pending with Contract Analyst')
+			SET @EmailBody = REPLACE(@EmailBody, '^RoleSummaryInfo^','Opportunity Analyst & pending with Contract Analyst for approval')
+		END
+		IF @EmailScenarioCode = 'CEACA'
+		BEGIN
+			SET @EmailBody = REPLACE(@EmailBody, '^Role^','Contract Analyst & Pending Signatory Process Initiation')
+			SET @EmailBody = REPLACE(@EmailBody, '^RoleSummaryInfo^','Contract Analyst & signatory process can be started by Contract Manager')
+		END
+		IF @EmailScenarioCode = 'CEABA'
+		BEGIN
+			IF @IsGAApprovalRequired = 'Y'
+			BEGIN
+				SET @Subject = REPLACE(@Subject, '^PendingWithRole^',' & Pending Grants Analyst')
+				SET @EmailBody = REPLACE(@EmailBody, '^PendingWithRole^','pending with Grants Analyst')
+				SET @EmailBody = REPLACE(@EmailBody, '^RoleSummaryInfo^',' & pending with Grants Analyst for approval')
+			END
+			ELSE
+			BEGIN
+				SET @Subject = REPLACE(@Subject, '^PendingWithRole^',' & Pending Opportunity Analyst')
+				SET @EmailBody = REPLACE(@EmailBody, '^PendingWithRole^','pending with Opportunity Analyst')
+				SET @EmailBody = REPLACE(@EmailBody, '^RoleSummaryInfo^',' & pending with Opportunity Analyst for approval')
+			END
+		END
+	END
+
+	IF @EmailScenarioCode = 'CEME'
+	BEGIN
+		SET @EmailBody = REPLACE(@EmailBody,'^Funding^',dbo.udf_GetFundingDataForEmail(@ContractId))
+		DECLARE @Procurement VARCHAR(3000) = ''
+		SET @Procurement = (select TOP 1 ProcurementType from [Procurements].[Lookups].[vwMOPContractAward] where ContractID=@ContractId);
+		IF @Procurement = '' or @Procurement IS NULL
+		BEGIN
+			SET @EmailBody = REPLACE(@EmailBody, '^ShowHideProcurementStart^','<!--')
+			SET @EmailBody = REPLACE(@EmailBody, '^ShowHideProcurementEnd^','-->')
+		END
+		ELSE
+		BEGIN
+			SET @EmailBody = REPLACE(@EmailBody, '^ShowHideProcurementStart^','')
+			SET @EmailBody = REPLACE(@EmailBody, '^ShowHideProcurementEnd^','')
+		END
+		SET @EmailBody = REPLACE(@EmailBody, '^Procurement^',ISNULL(@Procurement,''))
+	END
+
+	IF @Comment = '' or @Comment IS NULL
+			BEGIN
+				SET @EmailBody = REPLACE(@EmailBody, '^ShowHideCommentsStart^','<!--')
+				SET @EmailBody = REPLACE(@EmailBody, '^ShowHideCommentsEnd^','-->')
+			END
+		ELSE
+			BEGIN
+				SET @EmailBody = REPLACE(@EmailBody, '^ShowHideCommentsStart^','')
+				SET @EmailBody = REPLACE(@EmailBody, '^ShowHideCommentsEnd^','')
+			END
+	
+	
+	SELECT TOP(1) @SiteURL = ISNULL(Url,'') FROM [dbo].[tblEmailNotificationUrlPlaceHolderValues] WHERE Code = 'SiteURL'
+	SET @EmailBody = REPLACE(@EmailBody, '^SiteURL^', @SiteURL)
+
+	DECLARE @NycedcLogoUrl VARCHAR(2500) 
+	DECLARE @ViewInBrowserSiteUrl VARCHAR(2500) 
+
+    SELECT TOP(1) @NycedcLogoUrl = ISNULL(Url,'') FROM [dbo].[tblEmailNotificationUrlPlaceHolderValues] WHERE Code = 'NYCEDCLOGO'
+	SET @EmailBody = REPLACE(@EmailBody, '^NYCEDCLOGO^',@NycedcLogoUrl)
+
+	SELECT TOP(1) @ViewInBrowserSiteUrl = ISNULL(Url,'') FROM [dbo].[tblEmailNotificationUrlPlaceHolderValues] WHERE Code = 'ViewInBrowserSiteURL'
+	SET @EmailBody = REPLACE(@EmailBody, '^ViewInBrowserSiteURL^',@ViewInBrowserSiteUrl)
+		
+	IF @Cc = '' OR @Cc = NULL
+		BEGIN
+			SET @Cc = NULL
+		END
+	ELSE
+		BEGIN 
+			IF @IsTestMode = 1
+				BEGIN
+					SET @Cc = @To
+				END
+		END
+		
+	 --remove dups emails
+    IF  @To IS NOT NULL AND @To <> ''
+		BEGIN
+			SELECT @To = dbo.RemoveDupsEmail(@To,';') 
+		END
+	IF  @Cc IS NOT NULL AND @Cc <> ''
+		BEGIN
+			SELECT @Cc = dbo.RemoveDupsEmail(@Cc,';') 
+		END
+
+
+	EXEC Emails2017.Email.spInsertIntoQueue @EmailScenarioUID , @To , @Cc , @Subject , @EmailBody , NULL , 'Event Driven' 
+	 
+	IF @@ERROR <> 0   
+		BEGIN  
+		--return failure
+		   SELECT 0;  
+		END  
+	ELSE  
+		BEGIN  
+			--return success
+		   SELECT 1;  
+		END  
+END

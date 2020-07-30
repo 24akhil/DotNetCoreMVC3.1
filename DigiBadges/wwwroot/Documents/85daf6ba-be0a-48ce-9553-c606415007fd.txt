@@ -1,0 +1,26 @@
+API key:
+afekOx6l628hUyoSR4VwePOSL
+
+API secret key:
+FPBcwK0WPiqJknZkjhnFgSwwgfH6JcV7gHhUts2qMjJMUoMB2Q
+
+mongodb+srv://admin:Admin*123@cluster0-gt2bp.mongodb.net/test
+nileshmaheshverma@gmail.com
+Nilesh
+
+ List<DataAccess.Issuers> issuers = _issuer.AsQueryable().Where(e => e.StaffsIds.Contains(userid)).ToList();
+            string issuerif = "sgsgdf";
+            foreach (var item in issuers)
+            {
+                issuerif = item.Id.ToString();
+            }
+            //List<string> allissuerid = new List<string>();
+
+            //foreach(var item in issuers)
+            //{
+            //    allissuerid.Add(item.Id.ToString());
+
+            //}
+            var pathway = _path.AsQueryable().Where(e => e.IssuersId==new ObjectId(issuerif)).ToList();
+            //var pathway = _path.AsQueryable().Where(e => allissuerid.Contains(e.IssuersId.ToString())).ToList();
+            //var pathway1= _path.FilterBy(e => allissuerid.Contains(e.IssuersId.ToString())).ToList();

@@ -1,0 +1,733 @@
+@using Azmbl.Common.Enums
+@using Azmbl.StudioRG.Helpers
+@using Azmbl_ViewModels
+@model Azmbl_ViewModels.Heritage.AuditViewModel
+@{
+    ViewBag.Title = "AuditLog";
+    Layout = "~/Areas/Compass/Views/Shared/_Layout.cshtml";
+    var sessionHelper = (SessionHelper)Session["User"];
+}
+@section PageWiseCSS{
+    <link href="~/Content/HeritageNew/css/bootstrap-datetimepicker.css" rel="stylesheet" />
+    <style>
+        td {
+               word-wrap: break-word;
+           }
+        #auto_complete {
+            width: 100%;
+            display: inline-block;
+            font-size: 19px;
+        }
+        .table-header i{
+            float:right;
+            color:darkgray;
+        }
+
+        #nextRecord {
+            text-decoration: none;
+            display: inline-block;
+            padding: 8px 16px;
+        }
+
+       #nextRecord:hover {
+                background-color: #ddd;
+                color: black;
+            }
+
+        .next {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .round {
+            border-radius: 50%;
+        }
+
+        .pagination {
+            display: inline-block;
+        }
+
+            .pagination a {
+                color: black;
+                float: left;
+                padding: 8px 16px;
+                text-decoration: none;
+            }
+
+                .pagination a.active {
+                    background-color: #f44336;
+                    color: white;
+                    border-radius: 45%;
+                }
+
+                .pagination a:hover:not(.active) {
+                    background-color: #ddd;
+                    border-radius: 5px;
+                }
+    </style>
+}
+
+<div class="mainHeading" id="AuditLogPage">
+    <div class="row">
+        <div class="headingArea col-md-12 col-sm-12 col-xs-12">
+            <div class="col-md-10 col-sm-10 col-xs-12 mainHead">Audit Log</div>
+            @*Starting Html for displaying buttons for sending mails*@
+            <div id="divSendMail" class="clearfix col-md-2 col-sm-2 col-xs-12">
+                <a class="buttons-html5 hidden" aria-controls="tblAuditLogList" href="#" title="Select Outlet Manager" id="btnSendMailOutletManager" onclick="GetOutletManagers()">
+                    <span>
+                        <img class="img32" src="~/Content/HeritageNew/image/popupSm-32.png" />
+                    </span>
+                </a>
+            </div>
+            @*Endiing Html for displaying buttons for sending mails*@
+        </div>
+    </div>
+</div>
+<br />
+
+<div class="row">
+    <div class="col-md-12 col-sm-12 col-xs-12 Bold labelHead black">Select Date</div>
+      <div class='col-md-3 col-sm-3 col-xs-12'>
+            <div class='input-group date' id='datepicker'>
+               @Html.TextBoxFor(model => model.ToDate, new { id = "txtDate", @placeholder = "FromDate", @class = "bottomBorder fieldTxt", tabindex = "" })              
+               <span class="input-group-addon">
+               <span class="glyphicon glyphicon-calendar"></span>
+               </span>
+            </div>
+      </div>
+     <div class='col-md-3 col-sm-3 col-xs-12'>
+        <div class='input-group date' id='datepickerFrom'>
+            @Html.TextBoxFor(model => model.FromDate, new { id = "txtDateFrom", @placeholder = "ToDate", @class = "bottomBorder fieldTxt", tabindex = "" })
+            <span class="input-group-addon">
+                <span class="glyphicon glyphicon-calendar"></span>
+            </span>
+        </div>
+     </div>
+      <div class="col-md-2 col-sm-2 col-xs-12">
+            <input id="bthSearch" type="button" value="Search" style="border: 2px solid #f44336;" class="orangeBtn"/>
+      </div>
+    <div class="col-md-3 col-sm-3 col-xs-12">     
+            <div class="dataTables_filter" style="float:right">
+                <label>
+                    <input type="search" class="ui-autocomplete-input bottomBorder" placeholder="Search" aria-controls="tblAuditLogList" id="auto_complete" style="width:80%;">
+                    @*<a onclick="cross()" href="javascript:void(0)">
+                        <i alt="cross icon" title="Clear" style="color: rgb(255, 85, 85); opacity: 0;" class="glyphicon glyphicon-remove-circle cross pos pt5"></i>
+                    </a>*@                 
+                    <a id="nextRecord" class="next round">&#8250;</a>                   
+                </label>
+            </div>       
+    </div>
+</div>
+<br />
+
+<div id="dashboardTable">
+    <div class="datatable-overflow-scroll">
+        <table id="tblAuditLogList" class="table">
+            <thead class="table-header">
+                <tr>
+                    <th id="sort_username" onclick="sortTable(0)">
+                        UserName <i class='glyphicon glyphicon-arrow-up'></i><i class='glyphicon glyphicon-arrow-down'></i>
+                    </th>
+                    <th id="sort_urlaccessed" onclick="sortTable(1)">
+                        URLAccessed <i class='glyphicon glyphicon-arrow-up'></i><i class='glyphicon glyphicon-arrow-down'></i>
+                    </th>
+                    <th id="sort_timeaccessed" onclick="sortTable(2)">
+                        TimeAccessed <i class='glyphicon glyphicon-arrow-up'></i><i class='glyphicon glyphicon-arrow-down'></i>
+                    </th>
+                    <th id="sort_custommessage" onclick="sortTable(3)">
+                        CustomMessage <i class='glyphicon glyphicon-arrow-up'></i><i class='glyphicon glyphicon-arrow-down'></i>
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="table-body" id="auditLogTable">
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div style="width:800px; margin:0 auto;">
+    <span id="spnMsg"></span><br /><br />
+</div>
+
+<div align="right" style="padding-right:80px">
+    <span id=tbllength></span>
+</div>
+
+<div class="pagination hidden" id="paginationdiv" style="padding-left:10px">
+</div>
+
+<div class="pagination hidden" id="paginationdivForDateSearch" style="padding-left:10px">
+</div>
+
+ <div class="buttonGroup paddT20L15" align="center">
+     <input id="btnNext" type="button" value="Next" class="orangeBtn" style="visibility:hidden" />
+     <input id="btnPrevious" type="button" value="Previous" class="orangeBtn" />
+</div>
+
+<div id="myModal" class="modal fade" aria-labelledby="myModal" tabindex="-1" role="dialog" data-backdrop="static">
+    <div class="modal-dialog" id="myModalContent" role="document"></div>
+</div>
+
+    @section PageScript {
+   <script>
+
+       /* function to clear data in search*/
+       function cross() {
+           $(".cross").css('opacity', '0');
+           $("#auto_complete").val("");
+           var oTable = $('.dataTable').dataTable();
+           oTable.fnFilter($("#auto_complete").val());
+       };
+
+       $(document).ready(function () {
+
+         $('#datepicker').datetimepicker({
+             maxDate: 'now',
+             format: 'MM/DD/YYYY'
+           });
+
+         $('#datepickerFrom').datetimepicker({
+               maxDate: 'now',
+               format: 'MM/DD/YYYY'
+           });
+        var tblRowscurrent = 0;
+        var AuditLogList = [];
+        var countofPrevious = 1;
+        var countofPreviousSearchByDate = 1;
+        var isSearchClick = false;
+        var AuditLogSearchText = [];
+        var AuditLogListByDate = [];
+        var RecordsPerPage = 200;
+
+        /*method to display data of search in pages i.e onclick pageno*/
+        $('#paginationdiv').on("click","a",function () {
+            var currentPage = $(this).text();
+           // console.log(currentPage);
+            var tblRows = 0;
+            var totalRecords = AuditLogSearchText.length;
+            var startIndex = ((currentPage - 1) * RecordsPerPage) + 1;
+            var lastIndex = currentPage * RecordsPerPage;
+            $("#auditLogTable").empty();
+            if (lastIndex > totalRecords) {
+                for (var i = startIndex; i < totalRecords; i++) {
+
+                    var newHtml = '<tr class="newRow" id="">';
+                    newHtml += '<td class="cell" >' + AuditLogSearchText[i].UserName + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogSearchText[i].URLAccessed + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogSearchText[i].TimeAccessed + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogSearchText[i].CustomMessage + '</td>';
+                    $('#tblAuditLogList tbody').append(newHtml);
+                    tblRows++;
+                }
+            }
+            else {
+
+                for (var i = startIndex; i <= lastIndex; i++) {
+                    var newHtml = '<tr class="newRow" id="">';
+                    newHtml += '<td class="cell" >' + AuditLogSearchText[i].UserName + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogSearchText[i].URLAccessed + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogSearchText[i].TimeAccessed + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogSearchText[i].CustomMessage + '</td>';
+                    $('#tblAuditLogList tbody').append(newHtml);
+                    tblRows++;
+                }
+            }
+            $('#spnMsg').html("");
+            $('#tbllength').html("Showing " + tblRows + " entries");
+        });
+
+        /*method to display data of Datesearch in pages i.e onclick pageno*/
+        $('#paginationdivForDateSearch').on("click", "a", function () {
+            var currentPage = $(this).text();
+            // console.log(currentPage);
+            var tblRows = 0;
+            var totalRecords = AuditLogListByDate.length;
+            var startIndex = ((currentPage - 1) * RecordsPerPage) + 1;
+            var lastIndex = currentPage * RecordsPerPage;
+            $("#auditLogTable").empty();
+            if (lastIndex > totalRecords) {
+                for (var i = startIndex; i < totalRecords; i++) {
+
+                    var newHtml = '<tr class="newRow" id="">';
+                    newHtml += '<td class="cell" >' + AuditLogListByDate[i].UserName + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogListByDate[i].URLAccessed + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogListByDate[i].TimeAccessed + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogListByDate[i].CustomMessage + '</td>';
+                    $('#tblAuditLogList tbody').append(newHtml);
+                    tblRows++;
+                }
+            }
+            else {
+
+                for (var i = startIndex; i <= lastIndex; i++) {
+                    var newHtml = '<tr class="newRow" id="">';
+                    newHtml += '<td class="cell" >' + AuditLogListByDate[i].UserName + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogListByDate[i].URLAccessed + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogListByDate[i].TimeAccessed + '</td>';
+                    newHtml += '<td class="cell" >' + AuditLogListByDate[i].CustomMessage + '</td>';
+                    $('#tblAuditLogList tbody').append(newHtml);
+                    tblRows++;
+                }
+            }
+            $('#spnMsg').html("");
+            $('#tbllength').html("Showing " + tblRows + " entries");
+        });
+
+         /* function to load current date data*/
+        AuditLogList =@Html.Raw(Json.Encode(Model.AuditList));
+
+            $.map(AuditLogList, function (item) {
+                var auditLogobj = {
+                    UserName:item.UserName,
+                    URLAccessed:item.URLAccessed,
+                    TimeAccessed:item.TimeAccessed,
+                    CustomMessage:item.CustomMessage
+                };
+                AuditLogList.push(auditLogobj);
+            });
+
+            $.each(AuditLogList, function (index, val) {
+                var newHtml = '<tr class="newRow" id="">';
+                newHtml += '<td class="cell" >' + val.UserName + '</td>';
+                newHtml += '<td class="cell" >' + val.URLAccessed + '</td>';
+                newHtml += '<td class="cell" >' + val.TimeAccessed + '</td>';
+                newHtml += '<td class="cell" >' + val.CustomMessage + '</td>';
+                $('#tblAuditLogList tbody').append(newHtml);
+                tblRowscurrent++;
+            });
+
+            $('#tbllength').html("Showing " + tblRowscurrent + " entries");
+
+            $("#tblAuditLogList_filter > label").append('<a href="javascript:void(0)" onclick="cross()"><i class="glyphicon glyphicon-remove-circle cross pos pt5" style="color: #ff5555" title="Clear" alt="cross icon"></i> </a>');
+            $(".cross").css('opacity', '0');
+
+            //if ($("#bthSearch").click(function () {
+            //    countofPreviousSearchByDate = 1;
+            //}));
+
+            $("#btnPrevious").click(function () {
+                $("#auditLogTable").empty();
+                $('#tbllength').empty();
+                getPreviousDayData(countofPrevious);
+                countofPrevious++;
+                //var dateSearch = new Date($('#txtDate').val());
+                //if ((dateSearch == null || dateSearch == 'undefined' || dateSearch == 'Invalid Date') && isSearchClick == false) {
+                //    getPreviousDayData(countofPrevious);
+                //    countofPrevious++;
+                //}
+                //if ((dateSearch != null || dateSearch != 'undefined' || dateSearch == 'Invalid Date') && isSearchClick == true) {
+                //    getPreviousDataByDateOnSearch(countofPreviousSearchByDate);
+                //    countofPreviousSearchByDate++;
+                //}
+                $("#btnNext").css("visibility", "visible");
+            });
+
+            if ($("#btnNext").click(function () {
+                $("#auditLogTable").empty();
+                $('#tbllength').empty();
+                getPreviousDayData(countofPrevious - 2);
+                countofPrevious--;
+                //var dateSearch = new Date($('#txtDate').val());
+                //if ((dateSearch == null || dateSearch == 'undefined' || dateSearch == 'Invalid Date') && isSearchClick == false) {
+                //    getPreviousDayData(countofPrevious - 2);
+                //    countofPrevious--;
+                //}
+                //if ((dateSearch != null || dateSearch != 'undefined' || dateSearch == 'Invalid Date') && isSearchClick == true) {
+                //    getPreviousDataByDateOnSearch(countofPreviousSearchByDate-2);
+                //    countofPreviousSearchByDate--;
+                //}
+            }));
+
+            $('#auto_complete').keyup(function () {
+                var searchValue = $('#auto_complete').val();
+                var isNextClicked = 0;
+                if ($("#nextRecord").click(function () {
+                    isNextClicked = 1;
+                    if (searchValue.length >= 3)
+                        search_table(searchValue, isNextClicked);
+                }));
+                if (searchValue.length >= 3)
+                    search_table(searchValue,isNextClicked);
+            });
+
+           /*method to search data from current data done before......client side data search*/
+            //function search_table(value) {
+            //    $('#auditLogTable tr').each(function () {
+            //        var found = 'false';
+            //        $(this).each(function () {
+            //            if ($(this).text().toLowerCase().indexOf(value.toLowerCase()) >= 0) {
+            //                found = 'true';
+            //            }
+            //        });
+            //        if (found == 'true') {
+            //            $(this).show();
+            //        }
+            //        else {
+            //            $(this).hide();
+            //        }
+            //    });
+            //}
+
+
+            function search_table(value, isNextClicked) {
+                var tblRows = 0;
+                var searchDate = $('#txtDate').val();
+                var dateTo;
+                var dateFrom;
+
+                if (searchDate == null || searchDate == 'undefined' || searchDate == 'Invalid Date' || searchDate=="") {
+                    dateTo = new Date();
+                    dateFrom = new Date(dateTo);
+                    dateFrom.setMonth(dateTo.getMonth() - 1);
+                }
+                else {
+                    dateTo = new Date($('#txtDate').val());
+                    dateFrom = new Date(dateTo);
+                    dateFrom.setMonth(dateTo.getMonth() - 1);
+                }
+                $.ajax({
+                    type: "GET",
+                    url: '@Url.Action("AuditLogSearch", "Audit")',
+                    data: { dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString(), searchText: value, isNextClicked: isNextClicked.toString() },
+                    contentType: "application/json; charset=utf-8",
+                    dataType: 'json',
+                    success: function (result) {
+                        AuditLogSearchText = result.AuditLogSearchData;
+                        //console.log(AuditLogSearchText);
+                        $('#paginationdiv').empty();
+                        var totalpagecount = Math.ceil(AuditLogSearchText.length / RecordsPerPage);
+                        for (var i = 1; i <= totalpagecount; i++) {
+                            var pageCount = document.createElement("a");
+                            pageCount.innerHTML = i;
+                            $('#paginationdiv').append(pageCount);
+                            pageCount.className = 'page';
+                            }
+
+                             if (AuditLogSearchText == "") {
+                                   $('#spnMsg').html("No Record Found");
+                                   $('#tbllength').html("Showing 0 entries");
+                               }
+                             else {
+                                 $("#auditLogTable").empty();
+                                 $('#paginationdiv').removeClass("hidden");
+                                 //$.each(AuditLogSearchText, function (index, item) {
+                                 //    var newHtml = '<tr class="newRow" id="">';
+                                 //    newHtml += '<td class="cell" >' + item.UserName + '</td>';
+                                 //    newHtml += '<td class="cell" >' + item.URLAccessed + '</td>';
+                                 //    newHtml += '<td class="cell" >' + item.TimeAccessed + '</td>';
+                                 //    newHtml += '<td class="cell" >' + item.CustomMessage + '</td>';
+                                 //    $('#tblAuditLogList tbody').append(newHtml);
+                                 //    tblRows++;
+                                 //    if (tblRows == 10) {
+                                 //        return false;
+                                 //    }
+                                 //});
+                                     for (var i= 0; i < 200;i++){
+                                     var newHtml = '<tr class="newRow" id="">';
+                                     newHtml += '<td class="cell" >' + AuditLogSearchText[i].UserName + '</td>';
+                                     newHtml += '<td class="cell" >' + AuditLogSearchText[i].URLAccessed + '</td>';
+                                     newHtml += '<td class="cell" >' + AuditLogSearchText[i].TimeAccessed + '</td>';
+                                     newHtml += '<td class="cell" >' + AuditLogSearchText[i].CustomMessage + '</td>';
+                                     $('#tblAuditLogList tbody').append(newHtml);
+                                     tblRows++;
+                                 }
+                                     $('#spnMsg').html("");
+                                     $('#tbllength').html("Showing " + tblRows + " entries");
+                               }
+                         },
+                    error: function (jqXHR, textStatus, errorThrown) {
+                        if (textStatus === "timeout") {
+                            alert("Call has timed out");
+                        } else {
+                            alert("error while loading data");
+                        }
+                      }
+                  });
+
+            }
+
+            $("#bthSearch").click(function () {
+                $('#btnSendMailOutletManager').removeClass("hidden");
+                var dateSearch = new Date($('#txtDate').val());
+                if (dateSearch == null || dateSearch == 'undefined' || dateSearch=='Invalid Date') {
+                    alert("Please Select the date");
+                }
+                else {
+                    getDataByDate();
+                    isSearchClick = true;
+                }
+            });
+
+         /*method to search data by date*/
+          function getDataByDate() {
+           $("#auditLogTable").empty();
+           var tblRows = 0;
+           RecordsPerPage = 200;
+           var dateSearchfrom = $('#txtDate').val();
+           var dateSearchTo = $('#txtDateFrom').val();
+           if (dateSearchTo < dateSearchfrom) {
+               alert("DateTo Cannot be less than DateFrom")
+           }
+           else {
+               $.ajax({
+               type: "GET",
+               url: '@Url.Action("AuditLogDateFilter", "Audit")',
+               data: { dateFrom: dateSearchfrom, dateTo: dateSearchTo },
+               contentType: "application/json; charset=utf-8",
+               dataType: 'json',
+               success: function (result) {
+                   AuditLogListByDate = result.AuditListofPreviousDay;
+                   $('#paginationdivForDateSearch').empty();
+                   var totalpagecount = Math.ceil(AuditLogListByDate.length / RecordsPerPage);
+                   for (var i = 1; i <= totalpagecount; i++) {
+                       var pageCount = document.createElement("a");
+                       pageCount.innerHTML = i;
+                       $('#paginationdivForDateSearch').append(pageCount);
+                       pageCount.className = 'pageForDate';
+                   }
+
+                   if (AuditLogListByDate == "") {
+                       $('#spnMsg').html("No Record Found");
+                       $('#tbllength').html("Showing 0 entries");
+                   }
+                   else {
+                       //$.each(AuditLogListByDate, function (index, item) {
+                       //    var newHtml = '<tr class="newRow" id="">';
+                       //    newHtml += '<td class="cell" >' + item.UserName + '</td>';
+                       //    newHtml += '<td class="cell" >' + item.URLAccessed + '</td>';
+                       //    newHtml += '<td class="cell" >' + item.TimeAccessed + '</td>';
+                       //    newHtml += '<td class="cell" >' + item.CustomMessage + '</td>';
+                       //    $('#tblAuditLogList tbody').append(newHtml);
+                       //    tblRows++;
+                       //});
+                       $("#auditLogTable").empty();
+                       $('#paginationdivForDateSearch').removeClass("hidden");
+                       for (var i = 0; i < 200; i++) {
+                           var newHtml = '<tr class="newRow" id="">';
+                           newHtml += '<td class="cell" >' + AuditLogListByDate[i].UserName + '</td>';
+                           newHtml += '<td class="cell" >' + AuditLogListByDate[i].URLAccessed + '</td>';
+                           newHtml += '<td class="cell" >' + AuditLogListByDate[i].TimeAccessed + '</td>';
+                           newHtml += '<td class="cell" >' + AuditLogListByDate[i].CustomMessage + '</td>';
+                           $('#tblAuditLogList tbody').append(newHtml);
+                           tblRows++;
+                       }
+
+                       $('#spnMsg').html("");
+                       $('#tbllength').html("Showing " + tblRows + " entries");
+                   }
+               },
+               error: errorFunc
+
+               });
+           }
+           function errorFunc() {
+               alert('error while loading data');
+           }
+       }
+
+    });
+
+       /*method to get previous day data from current date*/
+       function getPreviousDayData(countclick) {
+        var tblRows = 0;
+        var today = new Date();
+        var yesterday = new Date();
+        yesterday.setDate(today.getDate() - countclick);
+
+        if (yesterday.getTime() == today.getTime()) {
+                $("#btnNext").hide();
+                location.reload();
+            }
+            else {
+                $.ajax({
+                    type: "GET",
+                    url: '@Url.Action("AuditLogPrevious", "Audit")',
+                    data: { date: yesterday.toISOString() },
+                    contentType: "application/json; charset=utf-8",
+                    dataType: 'json',
+                    success: function (result) {
+                        var AuditLogListPreviousDay = [];
+                        AuditLogListPreviousDay = result.AuditListofPreviousDay;
+
+                        if (AuditLogListPreviousDay == "") {
+                            $('#spnMsg').html("No Record Found");
+                            $('#tbllength').html("Showing 0 entries");
+                        }
+                        else {
+                            $.each(AuditLogListPreviousDay, function (index, item) {
+                                var newHtml = '<tr class="newRow" id="">';
+                                newHtml += '<td class="cell" >' + item.UserName + '</td>';
+                                newHtml += '<td class="cell" >' + item.URLAccessed + '</td>';
+                                newHtml += '<td class="cell" >' + item.TimeAccessed + '</td>';
+                                newHtml += '<td class="cell" >' + item.CustomMessage + '</td>';
+                                $('#tblAuditLogList tbody').append(newHtml);
+                                tblRows++;
+                            });
+                            $('#spnMsg').html("");
+                            $('#tbllength').html("Showing " + tblRows + " entries");
+                        }
+                    },
+                    error: errorFunc
+                });
+        }
+            function errorFunc() {
+                alert('error while loading data');
+            }
+        }
+
+       /*method to get data by date......done before*/
+       @*function getDataByDate() {
+           $("#auditLogTable").empty();
+           var tblRows = 0;
+           var dateSearch = $('#txtDate').val();
+           $.ajax({
+               type: "GET",
+               url: '@Url.Action("AuditLogPrevious", "Audit")',
+               data: { date: dateSearch },
+               contentType: "application/json; charset=utf-8",
+               dataType: 'json',
+               success: function (result) {
+                   var AuditLogListByDate = [];
+                   AuditLogListByDate = result.AuditListofPreviousDay;
+
+                   if (AuditLogListByDate == "") {
+                       $('#spnMsg').html("No Record Found");
+                       $('#tbllength').html("Showing 0 entries");
+                   }
+                   else {
+                       $.each(AuditLogListByDate, function (index, item) {
+                           var newHtml = '<tr class="newRow" id="">';
+                           newHtml += '<td class="cell" >' + item.UserName + '</td>';
+                           newHtml += '<td class="cell" >' + item.URLAccessed + '</td>';
+                           newHtml += '<td class="cell" >' + item.TimeAccessed + '</td>';
+                           newHtml += '<td class="cell" >' + item.CustomMessage + '</td>';
+                           $('#tblAuditLogList tbody').append(newHtml);
+                           tblRows++;
+                       });
+                       $('#spnMsg').html("");
+                       $('#tbllength').html("Showing " + tblRows + " entries");
+                   }
+               },
+               error: errorFunc
+           });
+           function errorFunc() {
+               alert('error while loading data');
+           }
+       }*@
+
+
+         /*method to get data on previous click datewise.....done before*/
+       @*function getPreviousDataByDateOnSearch(countclick) {
+                   var tblRows = 0;
+                   $("#auditLogTable").empty();
+                   $('#tbllength').empty();
+                   var today = new Date();
+                   var dateSearch = new Date($('#txtDate').val());
+                   var yesterdaydateSearch = new Date($('#txtDate').val());
+                   yesterdaydateSearch.setDate(dateSearch.getDate() - countclick);
+                   console.log(yesterdaydateSearch);
+
+                   if (yesterdaydateSearch.getTime() == today.getTime()) {
+                       $("#btnNext").hide();
+                       location.reload();
+                   }
+                   else {
+                       $.ajax({
+                           type: "GET",
+                           url: '@Url.Action("AuditLogPrevious", "Audit")',
+                           data: { date: yesterdaydateSearch.toISOString() },
+                           contentType: "application/json; charset=utf-8",
+                           dataType: 'json',
+                           success: function (result) {
+                               var AuditLogListPreviousDayBySearch = [];
+                               AuditLogListPreviousDayBySearch = result.AuditListofPreviousDay;
+
+                               if (AuditLogListPreviousDayBySearch == "") {
+                                   $('#spnMsg').html("No Record Found");
+                                   $('#tbllength').html("Showing 0 entries");
+                               }
+                               else {
+                                   $.each(AuditLogListPreviousDayBySearch, function (index, item) {
+                                       var newHtml = '<tr class="newRow" id="">';
+                                       newHtml += '<td class="cell" >' + item.UserName + '</td>';
+                                       newHtml += '<td class="cell" >' + item.URLAccessed + '</td>';
+                                       newHtml += '<td class="cell" >' + item.TimeAccessed + '</td>';
+                                       newHtml += '<td class="cell" >' + item.CustomMessage + '</td>';
+                                       $('#tblAuditLogList tbody').append(newHtml);
+                                       tblRows++;
+                                   });
+                                   $('#spnMsg').html("");
+                                   $('#tbllength').html("Showing " + tblRows + " entries");
+                               }
+                           },
+                           error: errorFunc
+                       });
+                       function errorFunc() {
+                           alert('error while loading data');
+                       }
+                   }
+           }*@
+
+           /*method to sort table by default asc*/
+            function sortTable(n) {
+                var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+                table = document.getElementById("tblAuditLogList");
+                switching = true;
+                dir = "asc";
+                while (switching) {
+                    switching = false;
+                    rows = table.rows;
+                    for (i = 1; i < (rows.length - 1); i++) {
+                        shouldSwitch = false;
+                        x = rows[i].getElementsByTagName("TD")[n];
+                        y = rows[i + 1].getElementsByTagName("TD")[n];
+                        if (dir == "asc") {
+                            if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
+                                shouldSwitch = true;
+                                break;
+                            }
+                        } else if (dir == "desc") {
+                            if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {
+                                shouldSwitch = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (shouldSwitch) {
+                        rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                        switching = true;
+                        switchcount++;
+                    } else {
+                        if (switchcount == 0 && dir == "asc") {
+                            dir = "desc";
+                            switching = true;
+                        }
+                    }
+                }
+       }
+
+          /*method to get outlet managers for mail functionality*/
+            function GetOutletManagers() {
+                var options = { "backdrop": "static", keyboard: true };
+                 $.ajax({
+                           url: '@Url.Action("GetLocationMangerList", "Audit")',
+                           type: 'GET',
+                           beforeSend: function () {
+                               ajaxindicatorstart('loading data.. please wait..');
+                           },
+                            data: {},
+                           success: function (result) {
+                               $('#myModalContent').html(result);
+                               $('#myModal').modal(options);
+                               $('#myModal').modal('show');
+                               ajaxindicatorstop();
+                             },
+                           complete: function () {
+                               ajaxindicatorstop();
+                             }
+                     });
+            }
+
+
+</script>
+    }
