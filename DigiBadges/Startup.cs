@@ -82,7 +82,6 @@ namespace DigiBadges
             services.Configure<MongoDbSetting>(Configuration.GetSection("MongoDb"));
             services.AddControllersWithViews();
             services.AddRazorPages();
-            
 
             services.AddControllersWithViews().AddRazorRuntimeCompilation();
             services.AddStackExchangeRedisCache(options =>
@@ -90,12 +89,13 @@ namespace DigiBadges
                   //options.Configuration = "localhost";
                   //options.InstanceName = "DIGI/"; // For App Isolation - Prefix automatically added to any key written to the cache
                   options.Configuration = Configuration.GetSection("RedisEndPoints").GetValue<string>("Configuration");
-                  options.InstanceName = Configuration.GetSection("RedisEndPoints").GetValue<string>("InstanceName");                  
+                  options.InstanceName = Configuration.GetSection("RedisEndPoints").GetValue<string>("InstanceName");
               });
 
             string solrCoreName = Configuration.GetSection("SolrEndPoints").GetValue<string>("UserCoreName");
             services.AddSolrNet<SolrUsersModel>(solrCoreName);
             services.AddSolrNet<SolrIssuersModel>(Configuration.GetSection("SolrEndPoints").GetValue<string>("IssuerCoreName").ToString());
+            services.AddSolrNet<SolrBadgeModel>(Configuration.GetSection("SolrEndPoints").GetValue<string>("BadgeCoreName").ToString());
 
             //services.AddSolrNet<SolrUsersModel>($"http://localhost:8983/solr/NewDigiData_Test04072020");
             //services.AddSolrNet<SolrIssuersModel>($"http://localhost:8983/solr/NewDigiData_Issuer10072020");

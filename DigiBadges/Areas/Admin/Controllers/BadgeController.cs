@@ -12,8 +12,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using SolrNet;
 
 namespace DigiBadges.Areas.Admin.Controllers
 {
@@ -21,13 +23,21 @@ namespace DigiBadges.Areas.Admin.Controllers
     [Authorize(Roles = AppUtility.AdminRole)]
     public class BadgeController : Controller
     {
-        private readonly Repository<DataAccess.Badge> _badge;
+        private readonly Repository<DigiBadges.DataAccess.Badge> _badge;
         private readonly IWebHostEnvironment _hostEnvironment;
         public IEnumerable<DigiBadges.DataAccess.Badge> badge;
-        public BadgeController(IWebHostEnvironment hostEnvironment, Repository<DataAccess.Badge> badge)
+        private ISolrOperations<SolrBadgeModel> _solr;
+        private IMongoCollection<DigiBadges.Models.Badge> badgeCollection;
+        private MongoDbSetting _mongoDbOptions { get; set; }
+        public BadgeController(IWebHostEnvironment hostEnvironment, IOptions<MongoDbSetting> mongoDbOptions, Repository<DataAccess.Badge> badge, ISolrOperations<SolrBadgeModel> solr)
         {
             _badge = badge;
+            _solr = solr;
+            _mongoDbOptions = mongoDbOptions.Value;
             _hostEnvironment = hostEnvironment;
+            var client = new MongoClient(_mongoDbOptions.ConnectionString);
+            IMongoDatabase db = client.GetDatabase(_mongoDbOptions.Database);
+            this.badgeCollection = db.GetCollection<DigiBadges.Models.Badge>("Badges");
         }
         public IActionResult Index()
         {
@@ -35,6 +45,37 @@ namespace DigiBadges.Areas.Admin.Controllers
             try
             {
                 badge = _badge.AsQueryable().ToList();
+                //var bdg = badgeCollection.Find(FilterDefinition<DigiBadges.Models.Badge>.Empty).ToList();
+
+                //var results = _solr.Query(SolrQuery.All);
+
+                //if(results != null)
+                //{
+                //    bool flag = false;
+                //    for(int badg=0;badg < bdg.Count(); badg++)
+                //    {
+                //        flag = false;
+                //        for(int solrBadge=0; solrBadge < results.Count; solrBadge++)
+                //        {
+                //            if(bdg[badg].BadgeId.ToString() == results[solrBadge].BadgeId)
+                //            {
+                //                flag = true;
+                //                break;
+                //            }
+
+
+                //        }
+                //        if(flag == false)
+                //        {
+                //            SolrBadgeModel sbm = new SolrBadgeModel(bdg[badg]);
+                            
+                //            //_solr.Add(sbm);
+                //            //_solr.Commit();
+                //        }
+
+                //    }
+                //}
+
             }
             catch(Exception e)
             {
@@ -48,6 +89,40 @@ namespace DigiBadges.Areas.Admin.Controllers
 
             return View(badgeVM);
         }
+     
+        
+        [HttpGet]
+        public IActionResult Search(string id)
+       {
+            try
+            {
+                string query = "Name:" + "*"+id+"*";
+                // id = HttpContext.Request.Query["term"].ToString();
+                var results = _solr.Query(query);
+
+                if (id != null)
+                {
+                    var names = results.Where(m => m.BadgeName.Contains(id)).Select(m => m.BadgeName).Take(5).ToList();
+                    return Ok(names);
+                }
+                else if(results == null)
+                {
+                    string[] s = new[] { "No match found" };
+                    return Ok(s.ToList());
+                }
+                else
+                {
+                    //string[] s = new []{""};
+                    return Ok();
+                }
+            }
+            catch(Exception e)
+            {
+                return BadRequest();
+            }
+        }
+
+
 
 
         public IActionResult Create()

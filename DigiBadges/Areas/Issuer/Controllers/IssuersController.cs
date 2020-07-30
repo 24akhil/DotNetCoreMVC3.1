@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using SolrNet;
 
 namespace DigiBadges.Areas.Issuer.Controllers
 {
@@ -37,17 +38,18 @@ namespace DigiBadges.Areas.Issuer.Controllers
         public Repository<DigiBadges.DataAccess.Issuers> _i;
         public Repository<DigiBadges.DataAccess.Users> _u;
         private IMongoCollection<Users> Users;
-
+        private ISolrOperations<SolrBadgeModel> _solr;
         private MongoDbSetting _mongoDbOptions { get; set; }
         #endregion
 
         #region  CONSTRUCTOR
 
         public IssuersController(IWebHostEnvironment hostEnvironment, IOptions<MongoDbSetting> mongoDbOptions,
-            IEmailSender emailSender, Repository<DigiBadges.DataAccess.EarnerBadgeDetails> ed, Repository<DigiBadges.DataAccess.Badge> b, Repository<DigiBadges.DataAccess.Users> u, Repository<DigiBadges.DataAccess.Issuers> i)
+            IEmailSender emailSender, ISolrOperations<SolrBadgeModel> solr, Repository<DigiBadges.DataAccess.EarnerBadgeDetails> ed, Repository<DigiBadges.DataAccess.Badge> b, Repository<DigiBadges.DataAccess.Users> u, Repository<DigiBadges.DataAccess.Issuers> i)
         {
             _mongoDbOptions = mongoDbOptions.Value;
             _b = b;
+            _solr = solr;
             _i = i;
             _ed = ed;
             _u = u;
@@ -214,7 +216,10 @@ namespace DigiBadges.Areas.Issuer.Controllers
                         CreatedBy = userSpecificIssuer.Name
                     };
                     badgeCollection.InsertOne(b);
-                
+                SolrBadgeModel solrBadg = new SolrBadgeModel(b);
+                //solrBadg.BadgeId = b.BadgeId.ToString(); 
+                _solr.Add(solrBadg);
+                _solr.Commit();
                 return RedirectToAction("Issuers"); 
 
             }
@@ -415,7 +420,12 @@ namespace DigiBadges.Areas.Issuer.Controllers
                     updateDef = updateDef.Set("ExpiryDuration", badge.ExpiryDuration);
 
                     var result = badgeCollection.UpdateOne(filter, updateDef);      //to update
-               
+                Badge badg = badgeCollection.Find(e => e.BadgeId
+        == oId).FirstOrDefault();
+                SolrBadgeModel solrBadg = new SolrBadgeModel(badg);
+                //solrBadg.BadgeId = b.BadgeId.ToString(); 
+                _solr.Add(solrBadg);
+                _solr.Commit();
                 return RedirectToAction("ViewBadge",new { id=id});
             }
 
@@ -429,6 +439,12 @@ namespace DigiBadges.Areas.Issuer.Controllers
             ObjectId oId = new ObjectId(id);
             
             var earnerBadge= earnerBadgeDetails.DeleteMany<EarnerBadgeDetails>(e => e.BadgeId == oId);
+            Badge badg = badgeCollection.Find(e => e.BadgeId
+        == oId).FirstOrDefault();
+
+            SolrBadgeModel sbdg = new SolrBadgeModel(badg);
+            _solr.Delete(sbdg);
+            _solr.Commit();
             var badge = badgeCollection.DeleteOne<Badge>(e => e.BadgeId == oId);         //To delete
               
 

@@ -36,12 +36,13 @@ namespace DigiBadgesNew.Areas.Admin.Controllers
         [HttpGet]
         public IActionResult Index()
         {
+            
 
             SearchVM model = new SearchVM()
             {
                 usrList = GetAllQuery()
             };
-
+           
             return View(model);
         }
         public  List<SolrUsersModel> GetAllQuery()
@@ -49,7 +50,15 @@ namespace DigiBadgesNew.Areas.Admin.Controllers
             var results = _solr.Query(SolrQuery.All);
 
             return results.ToList<SolrUsersModel>();
-   
+            //cache.SetString("12345", "aa");
+            //List<SolrUsersModel> solrList = new List<SolrUsersModel>();
+            //SolrUsersModel test = new SolrUsersModel();
+            //test.FirstName = cache.GetString("12345");
+            //test.LastName = "B";
+            //test.IsUserVerified = true;
+            //test.Email = "a@a";
+            //solrList.Add(test);
+            //return solrList;
         }
 
     
@@ -61,72 +70,78 @@ namespace DigiBadgesNew.Areas.Admin.Controllers
             return results.ToList<SolrUsersModel>();
        }
 
-    [HttpPost]
-    public async Task<IActionResult> Index(SearchVM ssvm)
-    {
-     if(ssvm.FirstName!=null || ssvm.LastName!= null || ssvm.Email!= null)
-    {
-        SearchCriteria criteria = new SearchCriteria();
-        
-        criteria.FirstName = ssvm.FirstName;
-        criteria.LastName = ssvm.LastName;
-        criteria.Email = ssvm.Email;
-        
-        
-        var searchId = criteria.GetSearchId();
-
-        var usersVal = await cache.GetSearchResultsAsync(searchId);
-
-            if (usersVal == null)
+        [HttpPost]
+        public async Task<IActionResult> Index(SearchVM ssvm)
+        {
+             if(ssvm.FirstName!=null || ssvm.LastName!= null || ssvm.Email!= null)
             {
-                 // string fname = criteria.FirstName;
-                // string lname = criteria.LastName;
-                // string email = criteria.Email;
+                SearchCriteria criteria = new SearchCriteria();
 
-                 string fname = string.Empty;
-                string lname = string.Empty;
-                string email = string.Empty;
+                criteria.FirstName = ssvm.FirstName;
+                criteria.LastName = ssvm.LastName;
+                criteria.Email = ssvm.Email;
 
-                if(!string.IsNullOrEmpty(criteria.FirstName))
-                fname = "*" + criteria.FirstName + "*";
-                if(!string.IsNullOrEmpty(criteria.LastName))
-                lname = "*" + criteria.LastName + "*";
-                if(!string.IsNullOrEmpty(criteria.Email))
-                email = "*" + criteria.Email + "*";
-               
-               
-                string query ="FirstName:'" + criteria.FirstName + "' OR " + " LastName:'" + criteria.LastName + "'" + " OR " + " Email:'" + criteria.Email + "'";
-               
-            
-              // var query = Query.Field("FirstName").Is(criteria.FirstName) || Query.Field("LastName").Is(LastName)|| Query.Field("Email").Is(Email);
-             //var results = solr.Query(query);
-               
-               
-                ssvm.usrList = GellSelectedQuery(query);
 
-                await cache.AddSearchResultsAsync(searchId, ssvm.usrList);
+                var searchId = criteria.GetSearchId();
 
+                var usersVal = await cache.GetSearchResultsAsync(searchId);
+
+                    if (usersVal == null)
+                    {
+                         // string fname = criteria.FirstName;
+                        // string lname = criteria.LastName;
+                        // string email = criteria.Email;
+
+                         string fname = string.Empty;
+                        string lname = string.Empty;
+                        string email = string.Empty;
+
+                        if(!string.IsNullOrEmpty(criteria.FirstName))
+                        fname = "*" + criteria.FirstName + "*";
+                        if(!string.IsNullOrEmpty(criteria.LastName))
+                        lname = "*" + criteria.LastName + "*";
+                        if(!string.IsNullOrEmpty(criteria.Email))
+                        email = "*" + criteria.Email + "*";
+
+
+                        string query ="FirstName:'" + criteria.FirstName + "' OR " + " LastName:'" + criteria.LastName + "'" + " OR " + " Email:'" + criteria.Email + "'";
+
+
+                      // var query = Query.Field("FirstName").Is(criteria.FirstName) || Query.Field("LastName").Is(LastName)|| Query.Field("Email").Is(Email);
+                     //var results = solr.Query(query);
+
+
+                        ssvm.usrList = GellSelectedQuery(query);
+
+                        await cache.AddSearchResultsAsync(searchId, ssvm.usrList);
+
+                    }
+                    else
+                    {
+                        ssvm.usrList = new List<SolrUsersModel>();
+
+                         foreach(SolrUsersModel uss in usersVal)
+                        {
+                            ssvm.usrList.Add(uss);
+                        }
+
+                    }
+
+                return View(ssvm);
             }
             else
             {
-                ssvm.usrList = new List<SolrUsersModel>();
 
-                 foreach(SolrUsersModel uss in usersVal)
-                {
-                    ssvm.usrList.Add(uss);
-                }
-              
+                 ssvm.usrList = GetAllQuery();
+                 return View(ssvm);
+            }
             }
 
-        return View(ssvm);
-    }
-    else
-    {
-        
-         ssvm.usrList = GetAllQuery();
-         return View(ssvm);
-    }
-    }
-
-    }
+            //cache.SetString("12345", "aa");
+            //ssvm.FirstName = "Nilesh";
+            //ssvm.LastName = "Nilesh";
+            //ssvm.Email = "nilesh@gmail.com";
+            //return View(ssvm);
+        }
+        //}
 }
